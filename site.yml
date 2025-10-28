@@ -1,0 +1,52 @@
+---
+- name: Deploy clickhouse
+  hosts: clickhouse
+  become: true
+  vars:
+    clickhouse_dbs_custom:
+      - { name: "logging", state: present }
+    clickhouse_listen_host_custom:
+      - "10.0.1.4"
+    clickhouse_users_custom:
+      - { name: "vector",
+          password: {{ vault_clickhouse_password }},
+          networks: "10.0.0.0/8",
+          profile: "default",
+          quota: "default",
+          dbs: [ logging ] ,
+          comment: "vector user for logging"}
+  roles:
+    - ansible-clickhouse
+
+  tasks:
+    - name: Create logs table
+      ansible.builtin.shell:
+        cmd: |
+          clickhouse-client --query="
+          CREATE TABLE IF NOT EXISTS logging.logs
+          (
+              timestamp String,
+              message String,
+              host String,
+              severity String,
+              facility String,
+              appname String,
+              procid String
+          ) ENGINE = MergeTree()
+          ORDER BY (host, severity, timestamp)
+          "
+      args:
+        executable: /bin/bash
+
+- name: Deploy Vector
+  hosts: vector
+  become: true
+  roles:
+    - vector-role
+
+- name: Deploy lighthouse
+  hosts: lighthouse
+  become: true
+  roles:
+    - lighthouse-role
+    
